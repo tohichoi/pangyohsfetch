@@ -1,5 +1,5 @@
 # This is a sample Python script.
-
+import socket
 import json
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
@@ -8,6 +8,8 @@ import os
 import pickle
 import re
 import urllib.request
+import html
+import requests
 
 from bs4 import BeautifulSoup
 from telegram import Bot
@@ -16,24 +18,86 @@ from telegram.utils.helpers import escape_markdown
 
 old_articles = {}
 urls = {
-    'notice': ['http://www.pangyo.hs.kr/board.list?mcode=1110&cate=1110',
+    'notice': [r'http://www.pangyo.hs.kr/board.list', {'mcode':1110, 'cate':1110},
                'http://www.pangyo.hs.kr', 0],
-    'family_notice': ['http://www.pangyo.hs.kr/board.list?mcode=1111&cate=1111',
+    'family_notice': [r'http://www.pangyo.hs.kr/board.list', {'mcode':1110, 'cate':1110},
                       'http://www.pangyo.hs.kr', 0],
 }
 
 
-def get_html(url):
-    req = urllib.request.Request(
-        url,
-        data=None,
-        headers={
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36'
-        }
-    )
+def get_html(url:str, params:dict):
 
-    with urllib.request.urlopen(req) as response:
-        data = response.read().decode('euc-kr')
+    # This data was created by using the curl method explained above
+    headers_list = [
+        # Firefox 77 Mac
+        {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:77.0) Gecko/20100101 Firefox/77.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://www.google.com/",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
+        },
+        # Firefox 77 Windows
+        {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://www.google.com/",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
+        },
+        # Chrome 83 Mac
+        {
+            "Connection": "keep-alive",
+            "DNT": "1",
+            "Upgrade-Insecure-Requests": "1",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+            "Referer": "https://www.google.com/",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8"
+        },
+        # Chrome 83 Windows 
+        {
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-User": "?1",
+            "Sec-Fetch-Dest": "document",
+            "Referer": "https://www.google.com/",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+    ]
+
+    # Create ordered dict from Headers above
+    # ordered_headers_list = []
+    # for headers in headers_list:
+    #     h = OrderedDict()
+    #     for header,value in headers.items():
+    #         h[header]=value
+    #     ordered_headers_list.append(h)
+
+    data = ''
+    try:
+        logger.info(f'Reading URL {url}')
+        response = requests.get(url, params=params, timeout=30)
+        data = response.text
+        # data=data.decode('euc-kr')
+        logger.info(f'response: {response}')
+    except Exception:
+        logger.info(f'Request time out')
+    finally:
         return data
 
 
@@ -46,13 +110,17 @@ def check_new_article(o_articles, preloaded_htmls=None):
     new_articles = dict()
 
     for board_name, url in urls.items():
-        if board_name not in htmls:
-            htmls[board_name] = get_html(url[0])
+        # if board_name not in htmls:
+        logger.info(f'Requesting {board_name} with {url[1]}')
+        htmls[board_name] = get_html(url[0], url[1])
 
         # htmls[board_name] = get_html(url[0])
-
+        logger.info(f'Parsing HTML : {board_name}')
         soup = BeautifulSoup(htmls[board_name], features="html.parser")
         elm = soup.find('table', 'boardList')
+        if not elm:
+            return new_articles
+
         tr = elm.find_all('tr')
         # skip th
         for r in tr[1:]:
@@ -73,7 +141,7 @@ def check_new_article(o_articles, preloaded_htmls=None):
                 # http://www.pangyo.hs.kr/board.read?mcode=1110&id=5475
 
                 new_articles[board_key] = (
-                    td[1].text.strip(), urls[board_name][1] + td[1].find('a').attrs['href'].strip())
+                    td[1].text.strip(), urls[board_name][2] + td[1].find('a').attrs['href'].strip())
 
     return new_articles
 
@@ -93,7 +161,7 @@ def make_message(articles):
     m = ''
     for k, v in articles.items():
         # s = f'* \\[{k} {v[0]}\\]\\({v[1]}\\)\n'
-        s = f'{get_title(k)} <a href="{v[1]}">{v[0]}</a>\n'
+        s = f'<b>{get_title(k)}</b><a href="{v[1]}">{html.escape(v[0])}</a>\n'
         if len(m) + len(s) > 4096:
             msgs.append(m)
             m = s
@@ -108,10 +176,12 @@ def make_message(articles):
 
 def fetch_articles(tbot, chatid, o_article, notify_empty_event=False):
 
+    # tbot.send_message(chatid, "Checkng new article ...", parse_mode='HTML')
     new_articles_sl = check_new_article(o_article)
     msgs = make_message(new_articles_sl)
     if len(msgs) > 0:
         for msg in msgs:
+            logger.info(f'{msg}')
             tbot.send_message(chatid, msg, parse_mode='HTML')
     else:
         if notify_empty_event:
