@@ -1,4 +1,5 @@
 # This is a sample Python script.
+import datetime
 import socket
 import json
 # Press Shift+F10 to execute it or replace it with your code.
@@ -152,6 +153,19 @@ def job_check(context):
     logging.info(f'Finished')
 
 
+def callback_ping(update, context):
+    logging.info(f'{update.effective_message.text}')
+
+    tbot = context.bot
+    chatid = update.effective_chat.id
+    job = context.job
+    jt: datetime.datetime = job.next_t
+
+    msg = f'PONG' \
+          f'  - Next job : {jt.isoformat()[:-7]}'
+    tbot.send_message(chatid, msg, parse_mode='HTML')
+
+
 # context: telegram.ext.CallbackContext
 def callback_check(update, context):
     logging.info(f'{update.effective_message.text}')
@@ -182,6 +196,7 @@ if __name__ == '__main__':
 
     job_queue = updater.job_queue
     dispatcher.add_handler(CommandHandler('check', callback_check, pass_job_queue=True))
+    dispatcher.add_handler(CommandHandler('ping', callback_ping, pass_job_queue=True))
 
     updater.job_queue.run_repeating(job_check, interval=3600 * 2, first=1, context=cf['bot_chatid'])
 
