@@ -26,6 +26,8 @@ urls = {
                       'http://www.pangyo.hs.kr', 0],
 }
 
+next_job_datetime = datetime.datetime.now()
+
 
 def get_html(url:str, params:dict):
     logging.info(f'Started')
@@ -143,9 +145,12 @@ def fetch_articles(tbot, chatid, o_article, notify_empty_event=False):
 
 
 def job_check(context):
+    global next_job_datetime
+
     logging.info(f'Starting job with {context}')
 
     tbot = context.bot
+    next_job_datetime = context.job.next_t
     chatid = context.job.context
 
     fetch_articles(tbot, chatid, old_articles)
@@ -154,15 +159,15 @@ def job_check(context):
 
 
 def callback_ping(update, context):
+    global next_job_datetime
     logging.info(f'{update.effective_message.text}')
 
     tbot = context.bot
     chatid = update.effective_chat.id
-    job = context.job
-    jt: datetime.datetime = job.next_t
+    jt = next_job_datetime.isoformat()[:-7] if next_job_datetime else 'Unknown'
 
     msg = f'PONG' \
-          f'  - Next job : {jt.isoformat()[:-7]}'
+          f'  - Next job : {jt}'
     tbot.send_message(chatid, msg, parse_mode='HTML')
 
 
