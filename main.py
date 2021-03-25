@@ -7,6 +7,7 @@ import logging
 import os
 import pickle
 import re
+import time
 import urllib.request
 import html
 import requests
@@ -26,71 +27,11 @@ urls = {
 
 
 def get_html(url:str, params:dict):
-
-    # This data was created by using the curl method explained above
-    headers_list = [
-        # Firefox 77 Mac
-        {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:77.0) Gecko/20100101 Firefox/77.0",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Referer": "https://www.google.com/",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1"
-        },
-        # Firefox 77 Windows
-        {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Referer": "https://www.google.com/",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1"
-        },
-        # Chrome 83 Mac
-        {
-            "Connection": "keep-alive",
-            "DNT": "1",
-            "Upgrade-Insecure-Requests": "1",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Dest": "document",
-            "Referer": "https://www.google.com/",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8"
-        },
-        # Chrome 83 Windows 
-        {
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-            "Sec-Fetch-Site": "same-origin",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-User": "?1",
-            "Sec-Fetch-Dest": "document",
-            "Referer": "https://www.google.com/",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-    ]
-
-    # Create ordered dict from Headers above
-    # ordered_headers_list = []
-    # for headers in headers_list:
-    #     h = OrderedDict()
-    #     for header,value in headers.items():
-    #         h[header]=value
-    #     ordered_headers_list.append(h)
+    logging.info(f'Started')
 
     data = ''
     try:
-        logger.info(f'Reading URL {url}')
+        logger.info(f'Reading URL {url} {params}')
         response = requests.get(url, params=params, timeout=30)
         data = response.text
         # data=data.decode('euc-kr')
@@ -98,10 +39,12 @@ def get_html(url:str, params:dict):
     except Exception:
         logger.info(f'Request time out')
     finally:
+        logging.info(f'Finished with data length {len(data)}')
         return data
 
 
 def check_new_article(o_articles, preloaded_htmls=None):
+    logging.info(f'Started')
 
     htmls = preloaded_htmls if preloaded_htmls else dict()
 
@@ -111,7 +54,7 @@ def check_new_article(o_articles, preloaded_htmls=None):
 
     for board_name, url in urls.items():
         # if board_name not in htmls:
-        logger.info(f'Requesting {board_name} with {url[1]}')
+        logger.info(f'Requesting {board_name} with {url[0]}, {url[1]}')
         htmls[board_name] = get_html(url[0], url[1])
 
         # htmls[board_name] = get_html(url[0])
@@ -119,7 +62,8 @@ def check_new_article(o_articles, preloaded_htmls=None):
         soup = BeautifulSoup(htmls[board_name], features="html.parser")
         elm = soup.find('table', 'boardList')
         if not elm:
-            return new_articles
+            logging.info(f'Cannot find element "table, boardList"')
+            break
 
         tr = elm.find_all('tr')
         # skip th
@@ -143,14 +87,18 @@ def check_new_article(o_articles, preloaded_htmls=None):
                 new_articles[board_key] = (
                     td[1].text.strip(), urls[board_name][2] + td[1].find('a').attrs['href'].strip())
 
+        time.sleep(5)
+
+    logging.info(f'Finished. # of new articles = {len(new_articles)}')
+
     return new_articles
 
 
 def get_title(board_key):
     if re.search('^notice[0-9]+$', board_key):
-        return '[공지사항]'
+        return '[공지사항] '
     if re.search('^family_notice[0-9]+$', board_key):
-        return '[가정통신문]'
+        return '[가정통신문] '
     else:
         return ''
 
@@ -194,12 +142,14 @@ def fetch_articles(tbot, chatid, o_article, notify_empty_event=False):
 
 
 def job_check(context):
-    logging.info(f'{context}')
+    logging.info(f'Starting job with {context}')
 
     tbot = context.bot
     chatid = context.job.context
 
     fetch_articles(tbot, chatid, old_articles)
+
+    logging.info(f'Finished')
 
 
 # context: telegram.ext.CallbackContext
