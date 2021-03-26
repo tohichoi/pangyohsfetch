@@ -26,6 +26,8 @@ urls = {
                       'http://www.pangyo.hs.kr', 0],
 }
 
+session = requests.Session()
+
 next_job_datetime = datetime.datetime.now()
 
 
@@ -35,7 +37,7 @@ def get_html(url:str, params:dict):
     data = ''
     try:
         logger.info(f'Reading URL {url} {params}')
-        response = requests.get(url, params=params, timeout=30)
+        response = session.get(url, params=params, timeout=30)
         data = response.text
         # data=data.decode('euc-kr')
         logger.info(f'response: {response}')
@@ -203,6 +205,7 @@ if __name__ == '__main__':
     dispatcher.add_handler(CommandHandler('check', callback_check, pass_job_queue=True))
     dispatcher.add_handler(CommandHandler('ping', callback_ping, pass_job_queue=True))
 
-    updater.job_queue.run_repeating(job_check, interval=3600 * 2, first=1, context=cf['bot_chatid'])
+    # updater.job_queue.run_repeating(job_check, interval=3600 * 2, first=1, context=cf['bot_chatid'])
+    updater.job_queue.run_repeating(job_check, interval=10, first=1, context=cf['bot_chatid'])
 
     updater.start_polling()
