@@ -11,6 +11,8 @@ import re
 import time
 import urllib.request
 import html
+
+import pendulum as pendulum
 import requests
 
 from bs4 import BeautifulSoup
@@ -20,32 +22,51 @@ from telegram.utils.helpers import escape_markdown
 
 old_articles = {}
 urls = {
-    'notice': [r'http://www.pangyo.hs.kr/board.list', {'mcode':1110, 'cate':1110},
+    'notice': [r'http://www.pangyo.hs.kr/board.list', {'mcode': 1110, 'cate': 1110},
                'http://www.pangyo.hs.kr', 0],
-    'family_notice': [r'http://www.pangyo.hs.kr/board.list', {'mcode':1110, 'cate':1110},
+    'family_notice': [r'http://www.pangyo.hs.kr/board.list', {'mcode': 1111, 'cate': 1111},
                       'http://www.pangyo.hs.kr', 0],
+    'online_lecture': [r'http://www.pangyo.hs.kr/board.list', {'mcode': 2011, 'cate': 2011},
+                       'http://www.pangyo.hs.kr', 0],
 }
 
-session = requests.Session()
+headers = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+    "Accept-Language": "ko-KR,en-GB,en-US;q=0.9,en;q=0.8",
+    "Dnt": "1",
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+}
 
-next_job_datetime = datetime.datetime.now()
 
-
-def get_html(url:str, params:dict):
+def get_html(url: str, params: dict):
     logging.info(f'Started')
-
+    retry = 0
     data = ''
-    try:
-        logger.info(f'Reading URL {url} {params}')
-        response = session.get(url, params=params, timeout=30)
-        data = response.text
-        # data=data.decode('euc-kr')
-        logger.info(f'response: {response}')
-    except Exception:
-        logger.info(f'Request time out')
-    finally:
-        logging.info(f'Finished with data length {len(data)}')
-        return data
+
+    session = requests.Session()
+    session.headers = headers
+
+    while retry < 5:
+        try:
+            # logger.info(f'GET http://www.pangyo.hs.kr')
+            # response = session.get(url, timeout=30)
+            # logger.info(f'GET {url} {params}')
+            session.headers.update({'Host': 'www.pangyo.hs.kr'})
+            response = session.get(url, params=params, timeout=30)
+            data = response.text
+            # data=data.decode('euc-kr')
+            logger.info(f'response: {response}')
+            break
+        except requests.exceptions.RequestException as e:
+            logger.info(f'Exception(response) : {e.response}')
+            logger.info(f'Exception(request)  : {e.request}')
+            retry += 1
+
+    logging.info(f'Tried {retry} times, finished with data length {len(data)}')
+
+    return data
 
 
 def check_new_article(o_articles, preloaded_htmls=None):
@@ -104,6 +125,8 @@ def get_title(board_key):
         return '[공지사항] '
     if re.search('^family_notice[0-9]+$', board_key):
         return '[가정통신문] '
+    if re.search('^online_lecture[0-9]+$', board_key):
+        return '[원격수업] '
     else:
         return ''
 
@@ -128,7 +151,6 @@ def make_message(articles):
 
 
 def fetch_articles(tbot, chatid, o_article, notify_empty_event=False):
-
     # tbot.send_message(chatid, "Checkng new article ...", parse_mode='HTML')
     new_articles_sl = check_new_article(o_article)
     msgs = make_message(new_articles_sl)
@@ -147,30 +169,28 @@ def fetch_articles(tbot, chatid, o_article, notify_empty_event=False):
 
 
 def job_check(context):
-    global next_job_datetime
-
     logging.info(f'Starting job with {context}')
 
     tbot = context.bot
-    next_job_datetime = context.job.next_t
     chatid = context.job.context
 
-    fetch_articles(tbot, chatid, old_articles)
+    fetch_articles(tbot, chatid, old_articles, True)
 
     logging.info(f'Finished')
 
 
 def callback_ping(update, context):
-    global next_job_datetime
     logging.info(f'{update.effective_message.text}')
 
     tbot = context.bot
     chatid = update.effective_chat.id
-    jt = next_job_datetime.isoformat()[:-7] if next_job_datetime else 'Unknown'
 
-    msg = f'PONG' \
-          f'  - Next job : {jt}'
-    tbot.send_message(chatid, msg, parse_mode='HTML')
+    jt = context.job_queue.jobs()[0].next_t
+    jt_local = pendulum.instance(jt).in_tz('Asia/Seoul')
+
+    msg = f'PONG\n' \
+          f'  - Next job : {jt_local.to_iso8601_string()}'
+    tbot.send_message(chatid, msg)
 
 
 # context: telegram.ext.CallbackContext
@@ -179,7 +199,8 @@ def callback_check(update, context):
 
     chatid = update.effective_chat.id
 
-    fetch_articles(context.bot, chatid, old_articles, notify_empty_event=True)
+    # fetch_articles(context.bot, chatid, old_articles, notify_empty_event=True)
+    fetch_articles(context.bot, chatid, old_articles, notify_empty_event=False)
 
 
 if __name__ == '__main__':
@@ -206,6 +227,6 @@ if __name__ == '__main__':
     dispatcher.add_handler(CommandHandler('ping', callback_ping, pass_job_queue=True))
 
     updater.job_queue.run_repeating(job_check, interval=3600 * 2, first=1, context=cf['bot_chatid'])
-    # updater.job_queue.run_repeating(job_check, interval=10, first=1, context=cf['bot_chatid'])
+    # updater.job_queue.run_repeating(job_check, interval=60, first=1, context=cf['bot_chatid'])
 
     updater.start_polling()
