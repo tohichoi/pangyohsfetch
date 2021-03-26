@@ -205,7 +205,7 @@ if __name__ == '__main__':
     dispatcher.add_handler(CommandHandler('check', callback_check, pass_job_queue=True))
     dispatcher.add_handler(CommandHandler('ping', callback_ping, pass_job_queue=True))
 
-    # updater.job_queue.run_repeating(job_check, interval=3600 * 2, first=1, context=cf['bot_chatid'])
-    updater.job_queue.run_repeating(job_check, interval=10, first=1, context=cf['bot_chatid'])
+    updater.job_queue.run_repeating(job_check, interval=3600 * 2, first=1, context=cf['bot_chatid'])
+    # updater.job_queue.run_repeating(job_check, interval=10, first=1, context=cf['bot_chatid'])
 
     updater.start_polling()
