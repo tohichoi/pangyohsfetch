@@ -174,7 +174,7 @@ def job_check(context):
     tbot = context.bot
     chatid = context.job.context
 
-    fetch_articles(tbot, chatid, old_articles, True)
+    fetch_articles(tbot, chatid, old_articles, False)
 
     logging.info(f'Finished')
 
@@ -200,7 +200,7 @@ def callback_check(update, context):
     chatid = update.effective_chat.id
 
     # fetch_articles(context.bot, chatid, old_articles, notify_empty_event=True)
-    fetch_articles(context.bot, chatid, old_articles, notify_empty_event=False)
+    fetch_articles(context.bot, chatid, old_articles, notify_empty_event=True)
 
 
 if __name__ == '__main__':
